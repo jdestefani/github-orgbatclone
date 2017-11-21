@@ -6,7 +6,6 @@ import subprocess
 import getpass
 import pdb
 
-
 if __name__ == "__main__":
    # Commandline option parsing using optparse
    parser = OptionParser(usage="usage: %prog [options] filename",
@@ -53,23 +52,34 @@ if __name__ == "__main__":
       # Otherwise, make HTTP request for JSON list of repositories without
       repo_list_request = requests.get('https://api.github.com/orgs/'+options.organisation_name+'/repos?per_page=200')
 
-   # Filter repositories according to assignment name (if present) and clone them
-   for repository in repo_list_request.json():
-      # If an assignment name is given, check out only the repositories with that name
-      if options.assignment_name:
-         if repository["name"].find(options.assignment_name) != -1:
-            subprocess.call(["git", "clone", repository["clone_url"]])
-      else: # Otherwise check out all the repositories
-         subprocess.call(["git", "clone", repository["clone_url"]])
+   #Download repositories if correct request
+   if repo_list_request.status_code == requests.codes.ok:
+      
+      curr_dir = os.getcwd()
 
-      # If a checkout date is set and the clone operation suceeded
-      if options.checkout_date and os.path.exists(os.path.join(curr_dir,repository["name"])):
-         curr_dir = os.getcwd() 
-         os.chdir(os.path.join(curr_dir,repository["name"])) # cd into the repository
-         commit_hash = subprocess.check_output(['git','rev-list', '-n', '1', '--before="'+options.checkout_date+'"', 'master']) # Find commit hash before desired dates
-         subprocess.call(['git','checkout', '-b', 'deadline', commit_hash[:-1].decode("UTF-8")]) # Create and checkout to a deadline branch given commit hash
-         os.chdir(curr_dir) #cd out of the repository
+      # Filter repositories according to assignment name (if present) and clone them
+      for repository in repo_list_request.json():
+         # If an assignment name is given, check out only the repositories with that name
+         if options.assignment_name:
+            if repository["name"].find(options.assignment_name) != -1:
+               if repository["private"]: # Pass through ssh to avoid asking username and password everytime
+                  subprocess.call(["git", "clone", repository["ssh_url"]])
+               else:
+                  subprocess.call(["git", "clone", repository["clone_url"]])
+         else: # Otherwise check out all the repositories
+            if repository["private"]: # Pass through ssh to avoid asking username and password everytime
+               subprocess.call(["git", "clone", repository["ssh_url"]])
+            else:
+               subprocess.call(["git", "clone", repository["clone_url"]])
 
+               # If a checkout date is set and the clone operation suceeded
+               if options.checkout_date and os.path.exists(os.path.join(curr_dir,repository["name"])):
+                  os.chdir(os.path.join(curr_dir,repository["name"])) # cd into the repository
+                  commit_hash = subprocess.check_output(['git','rev-list', '-n', '1', '--before="'+options.checkout_date+'"', 'master']) # Find commit hash before desired dates
+                  subprocess.call(['git','checkout', '-b', 'deadline', commit_hash[:-1].decode("UTF-8")]) # Create and checkout to a deadline branch given commit hash
+                  os.chdir(curr_dir) #cd out of the repository
+   else:# Raise execption otherwise
+   	repo_list_request.raise_for_status()
 
 
 
