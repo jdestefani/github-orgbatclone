@@ -30,6 +30,11 @@ if __name__ == "__main__":
                       dest="username",
                       default="",
                       help="Specify the username on Github")
+   parser.add_option("-s", "--ssh",
+                      action="store_true",
+                      dest="ssh_flag",
+                      default=False,
+                      help="Use ssh instead of default https connection to clone")
    (options, args) = parser.parse_args()
 
    # Force user to input both assignment and organisation name
@@ -37,6 +42,7 @@ if __name__ == "__main__":
       parser.error("Organisation name is a mandatory parameter")
 
    print('[INFO] Organization: ' + options.organisation_name)
+   print('[INFO] Using ssh connection: ' + str(options.ssh_flag))
 
    # If an assignment name is passed, print it
    if options.assignment_name:
@@ -59,27 +65,31 @@ if __name__ == "__main__":
 
       # Filter repositories according to assignment name (if present) and clone them
       for repository in repo_list_request.json():
+
+         clone_repository = False
+         
          # If an assignment name is given, check out only the repositories with that name
          if options.assignment_name:
             if repository["name"].find(options.assignment_name) != -1:
-               if repository["private"]: # Pass through ssh to avoid asking username and password everytime
-                  subprocess.call(["git", "clone", repository["ssh_url"]])
-               else:
-                  subprocess.call(["git", "clone", repository["clone_url"]])
+               clone_repository = True
          else: # Otherwise check out all the repositories
-            if repository["private"]: # Pass through ssh to avoid asking username and password everytime
+            clone_repository = True
+
+         if clone_repository: # Si le dépot doit être cloné
+            if options.ssh_flag: # Choisir le mode du téléchargement sur base du flag ssh
                subprocess.call(["git", "clone", repository["ssh_url"]])
             else:
                subprocess.call(["git", "clone", repository["clone_url"]])
 
-               # If a checkout date is set and the clone operation suceeded
-               if options.checkout_date and os.path.exists(os.path.join(curr_dir,repository["name"])):
-                  os.chdir(os.path.join(curr_dir,repository["name"])) # cd into the repository
-                  commit_hash = subprocess.check_output(['git','rev-list', '-n', '1', '--before="'+options.checkout_date+'"', 'master']) # Find commit hash before desired dates
-                  subprocess.call(['git','checkout', '-b', 'deadline', commit_hash[:-1].decode("UTF-8")]) # Create and checkout to a deadline branch given commit hash
-                  os.chdir(curr_dir) #cd out of the repository
+            # If a checkout date is set and the clone operation suceeded
+            if options.checkout_date and os.path.exists(os.path.join(curr_dir,repository["name"])):
+               os.chdir(os.path.join(curr_dir,repository["name"])) # cd into the repository
+               commit_hash = subprocess.check_output(['git','rev-list', '-n', '1', '--before="'+options.checkout_date+'"', 'master']) # Find commit hash before desired dates
+               subprocess.call(['git','checkout', '-b', 'deadline', commit_hash[:-1].decode("UTF-8")]) # Create and checkout to a deadline branch given commit hash
+               os.chdir(curr_dir) #cd out of the repository
+               
    else:# Raise execption otherwise
-   	repo_list_request.raise_for_status()
+      repo_list_request.raise_for_status()
 
 
 
