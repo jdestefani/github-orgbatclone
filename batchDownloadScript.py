@@ -4,7 +4,10 @@ import os
 from optparse import OptionParser
 import subprocess
 import getpass
+import math
 import pdb
+
+REPOSITORIES_PER_PAGE = 100
 
 if __name__ == "__main__":
    # Commandline option parsing using optparse
@@ -41,6 +44,8 @@ if __name__ == "__main__":
    if not(options.organisation_name):
       parser.error("Organisation name is a mandatory parameter")
 
+   list_requests = []
+
    print('[INFO] Organization: ' + options.organisation_name)
    print('[INFO] Using ssh connection: ' + str(options.ssh_flag))
 
@@ -51,45 +56,60 @@ if __name__ == "__main__":
    # If a username is passed, require authentication
    if options.username:
       print('Insert password for Github authentication for ' + options.username + ':')
-      password = getpass.getpass() 
-      # Make HTTP request for JSON list of repositories with credentials
-      repo_list_request = requests.get('https://api.github.com/orgs/'+options.organisation_name+'/repos?per_page=200',auth=(options.username,password))
+      password = getpass.getpass()
+
+      # Make a request to get the number of repositories and compute the number of pages to request
+      org_request =requests.get('https://api.github.com/orgs/'+options.organisation_name,auth=(options.username,password))
+      repositories = org_request.json()["total_private_repos"] 
+      pages = int(math.ceil(repositories/float(REPOSITORIES_PER_PAGE)))
+
+      # Make HTTP requests for JSON list of repositories with credentials
+      for i in range(pages):
+         list_requests.append(requests.get('https://api.github.com/orgs/'+options.organisation_name+'/repos?per_page=100&page='+str(i+1),auth=(options.username,password)))
    else:
-      # Otherwise, make HTTP request for JSON list of repositories without
-      repo_list_request = requests.get('https://api.github.com/orgs/'+options.organisation_name+'/repos?per_page=200')
+      # Make a request to get the number of repositories and compute the number of pages to request
+      org_request = requests.get('https://api.github.com/orgs/'+options.organisation_name)
+      repositories = org_request.json()["public_repos"]
+      pages = int(math.ceil(repositories/float(REPOSITORIES_PER_PAGE)))
 
-   #Download repositories if correct request
-   if repo_list_request.status_code == requests.codes.ok:
+      for i in range(pages):
+         # Make HTTP request for JSON list of repositories without credentials
+         list_requests.append(requests.get('https://api.github.com/orgs/'+options.organisation_name+'/repos?per_page=100&page='+str(i+1)))
+
+   count = 0
+   for repo_list_request in list_requests:
       
-      curr_dir = os.getcwd()
-
-      # Filter repositories according to assignment name (if present) and clone them
-      for repository in repo_list_request.json():
-
-         clone_repository = False
-         
-         # If an assignment name is given, check out only the repositories with that name
-         if options.assignment_name:
-            if repository["name"].find(options.assignment_name) != -1:
+      #Download repositories if correct request
+      if repo_list_request.status_code == requests.codes.ok:
+         curr_dir = os.getcwd()
+         # Filter repositories according to assignment name (if present) and clone them
+         for repository in repo_list_request.json():
+            clone_repository = False
+            # If an assignment name is provided, check out only the repositories with that name
+            if options.assignment_name:
+               if repository["name"].find(options.assignment_name) != -1:
+                  clone_repository = True
+            else: # Otherwise check out all the repositories
                clone_repository = True
-         else: # Otherwise check out all the repositories
-            clone_repository = True
 
-         if clone_repository: # Si le dépot doit être cloné
-            if options.ssh_flag: # Choisir le mode du téléchargement sur base du flag ssh
-               subprocess.call(["git", "clone", repository["ssh_url"]])
-            else:
-               subprocess.call(["git", "clone", repository["clone_url"]])
+            if clone_repository: # If the repository should be cloned
+               print('[INFO] Cloning repository ' + repository["name"])
+               count = count + 1
+               if options.ssh_flag: # Select download mode according to flag
+                  subprocess.call(["git", "clone", repository["ssh_url"]])
+               else:
+                  subprocess.call(["git", "clone", repository["clone_url"]])
+               # If a checkout date is set and the clone operation suceeded
+               if options.checkout_date and os.path.exists(os.path.join(curr_dir,repository["name"])):
+                  os.chdir(os.path.join(curr_dir,repository["name"])) # cd into the repository
+                  commit_hash = subprocess.check_output(['git','rev-list', '-n', '1', '--before="'+options.checkout_date+'"', 'master']) # Find commit hash before desired dates
+                  subprocess.call(['git','checkout', '-b', 'deadline', commit_hash[:-1].decode("UTF-8")]) # Create and checkout to a deadline branch given commit hash
+                  os.chdir(curr_dir) #cd out of the repository
 
-            # If a checkout date is set and the clone operation suceeded
-            if options.checkout_date and os.path.exists(os.path.join(curr_dir,repository["name"])):
-               os.chdir(os.path.join(curr_dir,repository["name"])) # cd into the repository
-               commit_hash = subprocess.check_output(['git','rev-list', '-n', '1', '--before="'+options.checkout_date+'"', 'master']) # Find commit hash before desired dates
-               subprocess.call(['git','checkout', '-b', 'deadline', commit_hash[:-1].decode("UTF-8")]) # Create and checkout to a deadline branch given commit hash
-               os.chdir(curr_dir) #cd out of the repository
-               
-   else:# Raise execption otherwise
-      repo_list_request.raise_for_status()
+      else:# Raise execption otherwise
+         repo_list_request.raise_for_status()
+
+   print("[INFO] Total count: %d" % count)         
 
 
 
