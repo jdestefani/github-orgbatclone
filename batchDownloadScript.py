@@ -6,8 +6,27 @@ import subprocess
 import getpass
 import math
 import pdb
+import csv
 
 REPOSITORIES_PER_PAGE = 100
+
+def gitLogToCSV(directory_name):
+   GIT_COMMIT_FIELDS = ['id', 'author_name', 'author_email', 'date', 'message']
+   GIT_LOG_FORMAT = ['%H', '%an', '%ae', '%ad', '%s']
+   GIT_LOG_FORMAT = '%x1f'.join(GIT_LOG_FORMAT) + '%x1e' # Add ASCII field separator and record separator to simplify parsing
+
+   p = subprocess.Popen('git --git-dir ./%s/.git log --format="%s"' % (directory_name,GIT_LOG_FORMAT), shell=True, stdout=subprocess.PIPE)
+   (log, _) = p.communicate()
+   log = log.decode('UTF-8') # Decode the output from git log to UTF-8
+   log = log.strip('\n\x1e').split("\x1e")
+   log = [row.strip().split("\x1f") for row in log]
+   log = [dict(zip(GIT_COMMIT_FIELDS, row)) for row in log]
+
+   with open('%s/gitLog.csv' % directory_name,'w') as f:
+      w = csv.DictWriter(f,GIT_COMMIT_FIELDS)
+      w.writerow(dict((index,index) for index in GIT_COMMIT_FIELDS))
+      w.writerows(log)
+
 
 if __name__ == "__main__":
    # Commandline option parsing using optparse
@@ -99,6 +118,7 @@ if __name__ == "__main__":
                   subprocess.call(["git", "clone", repository["ssh_url"]])
                else:
                   subprocess.call(["git", "clone", repository["clone_url"]])
+               gitLogToCSV(repository["name"]) #Before rolling back the repository, generate the CSV file of the logs
                # If a checkout date is set and the clone operation suceeded
                if options.checkout_date and os.path.exists(os.path.join(curr_dir,repository["name"])):
                   os.chdir(os.path.join(curr_dir,repository["name"])) # cd into the repository
