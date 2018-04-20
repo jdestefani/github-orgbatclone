@@ -104,6 +104,7 @@ if __name__ == "__main__":
          # Filter repositories according to assignment name (if present) and clone them
          for repository in repo_list_request.json():
             clone_repository = False
+
             # If an assignment name is provided, check out only the repositories with that name
             if options.assignment_name:
                if repository["name"].find(options.assignment_name) != -1:
@@ -118,12 +119,14 @@ if __name__ == "__main__":
                   subprocess.call(["git", "clone", repository["ssh_url"]])
                else:
                   subprocess.call(["git", "clone", repository["clone_url"]])
+
                gitLogToCSV(repository["name"]) #Before rolling back the repository, generate the CSV file of the logs
                # If a checkout date is set and the clone operation suceeded
                if options.checkout_date and os.path.exists(os.path.join(curr_dir,repository["name"])):
                   os.chdir(os.path.join(curr_dir,repository["name"])) # cd into the repository
-                  commit_hash = subprocess.check_output(['git','rev-list', '-n', '1', '--before="'+options.checkout_date+'"', 'master']) # Find commit hash before desired dates
-                  subprocess.call(['git','checkout', '-b', 'deadline', commit_hash[:-1].decode("UTF-8")]) # Create and checkout to a deadline branch given commit hash
+                  if subprocess.call(["git","log"],stdout=subprocess.DEVNULL,stderr=subprocess.STDOUT) != 128: #If the repository is empty, git log returns exit code 128
+                     commit_hash = subprocess.check_output(['git','rev-list', '-n', '1', '--before="'+options.checkout_date+'"', 'master']) # Find commit hash before desired dates
+                     subprocess.call(['git','checkout', '-b', 'deadline', commit_hash[:-1].decode("UTF-8")]) # Create and checkout to a deadline branch given commit hash
                   os.chdir(curr_dir) #cd out of the repository
 
       else:# Raise execption otherwise

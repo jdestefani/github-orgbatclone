@@ -4,12 +4,12 @@ Python script to perform the batch clone of all the repositories related to a ce
 # How to use it
 Without ssh:
 ```
-python batchDownloadScript.py -o organisation_name -a assignment_name -d "YYYY-MM-DD HH:HH" -u username 
+python batchDownloadScript.py -o organisation_name -a assignment_name -d "YYYY-MM-DD HH:mm" -u username 
 ```
 
 With ssh:
 ```
-python batchDownloadScript.py -o organisation_name -a assignment_name -d "YYYY-MM-DD HH:HH" -u username -s
+python batchDownloadScript.py -o organisation_name -a assignment_name -d "YYYY-MM-DD HH:mm" -u username -s
 ```
 
 Note:
